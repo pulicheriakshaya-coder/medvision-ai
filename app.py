@@ -4,21 +4,28 @@ import numpy as np
 import torch
 import torchvision
 import torchxrayvision as xrv
+import pandas as pd
 
 st.set_page_config(
     page_title="MedVision AI",
     page_icon="🩻",
-    layout="centered"
+    layout="wide"
 )
 
+# ---------- HEADER ----------
 st.title("🩻 MedVision AI")
 st.subheader("Chest X-ray Abnormality Screening")
 
-st.warning(
-    "This is an AI-assisted screening prototype for educational/hackathon use. "
-    "It is NOT a medical diagnosis."
+st.write(
+    "AI-assisted screening of chest X-ray images using a pretrained "
+    "deep-learning model."
 )
 
+st.warning(
+    "⚠️ Educational/Hackathon Prototype — AI scores are not a medical diagnosis."
+)
+
+# ---------- MODEL ----------
 @st.cache_resource
 def load_model():
     model = xrv.models.DenseNet(
@@ -28,8 +35,9 @@ def load_model():
     return model
 
 
+# ---------- IMAGE UPLOAD ----------
 uploaded_file = st.file_uploader(
-    "Upload Chest X-ray",
+    "📤 Upload Chest X-ray",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -37,28 +45,37 @@ if uploaded_file is not None:
 
     image = Image.open(uploaded_file).convert("RGB")
 
-    st.image(
-        image,
-        caption="Uploaded Chest X-ray",
-        use_container_width=True
-    )
+    col1, col2 = st.columns([1, 1])
 
-    if st.button("🔍 Analyze X-ray"):
+    with col1:
+        st.image(
+            image,
+            caption="Uploaded Chest X-ray",
+            use_container_width=True
+        )
 
-        with st.spinner("Loading AI model and analyzing image..."):
+    with col2:
+        st.info(
+            "Image received successfully.\n\n"
+            "Click **Analyze X-ray** to run the AI screening model."
+        )
+
+    if st.button("🔍 Analyze X-ray", use_container_width=True):
+
+        with st.spinner("Analyzing X-ray with AI model..."):
 
             model = load_model()
 
-            # Convert image to numpy
+            # Convert image to NumPy
             img = np.array(image)
 
-            # Normalize image to TorchXRayVision range
+            # Normalize image
             img = xrv.datasets.normalize(img, 255)
 
-            # Convert RGB to single grayscale channel
+            # Convert RGB to grayscale
             img = img.mean(2)[None, ...]
 
-            # Resize and center crop
+            # Resize / crop
             transform = torchvision.transforms.Compose([
                 xrv.datasets.XRayCenterCrop(),
                 xrv.datasets.XRayResizer(224)
@@ -66,10 +83,10 @@ if uploaded_file is not None:
 
             img = transform(img)
 
-            # Convert to PyTorch tensor
+            # Convert to tensor
             img_tensor = torch.from_numpy(img).unsqueeze(0)
 
-            # Run model
+            # Model prediction
             with torch.no_grad():
                 output = model(img_tensor)[0].cpu().numpy()
 
@@ -77,35 +94,83 @@ if uploaded_file is not None:
                 zip(model.pathologies, output)
             )
 
-        st.success("Analysis completed!")
+        st.success("✅ AI screening completed!")
 
-        st.subheader("🧠 AI Screening Results")
+        # ---------- RESULTS ----------
+        st.divider()
+        st.header("🧠 AI Screening Results")
 
-        # Sort findings by score
         sorted_predictions = sorted(
             predictions.items(),
             key=lambda x: x[1],
             reverse=True
         )
 
-        # Display top findings
-        for finding, score in sorted_predictions[:8]:
+        # Top 3 findings
+        top3 = sorted_predictions[:3]
+
+        cols = st.columns(3)
+
+        for col, (finding, score) in zip(cols, top3):
 
             percentage = float(score) * 100
 
-            st.write(
-                f"**{finding}** — {percentage:.1f}%"
-            )
+            with col:
+                st.metric(
+                    label=finding,
+                    value=f"{percentage:.1f}%"
+                )
 
-            st.progress(
-                min(max(float(score), 0.0), 1.0)
-            )
+        # ---------- CHART ----------
+        st.subheader("📊 Finding Scores")
 
-        st.info(
-            "These scores are model outputs and should not be interpreted "
-            "as a confirmed diagnosis. Clinical evaluation is required."
+        chart_data = pd.DataFrame(
+            {
+                "Finding": [x[0] for x in sorted_predictions[:8]],
+                "Score": [
+                    max(0, float(x[1]) * 100)
+                    for x in sorted_predictions[:8]
+                ]
+            }
         )
 
+        chart_data = chart_data.set_index("Finding")
+
+        st.bar_chart(chart_data)
+
+        # ---------- TABLE ----------
+        st.subheader("📋 Detailed Screening Scores")
+
+        table_data = pd.DataFrame(
+            [
+                {
+                    "Finding": finding,
+                    "Screening Score": f"{float(score) * 100:.1f}%"
+                }
+                for finding, score in sorted_predictions
+            ]
+        )
+
+        st.dataframe(
+            table_data,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.info(
+            "These values represent model screening outputs. "
+            "They do not confirm the presence or absence of disease. "
+            "A qualified healthcare professional should interpret medical images."
+        )
+
+else:
+
+    st.info(
+        "👆 Upload a chest X-ray image above to begin AI-assisted screening."
+    )
+
+
+# ---------- FOOTER ----------
 st.divider()
 
 st.caption(
