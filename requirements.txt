@@ -4,3 +4,7 @@ pandas
 Pillow
 opencv-python-headless
 matplotlib
+torch
+torchvision
+torchxrayvision
+scikit-image
